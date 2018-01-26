@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dredh.mapper.KeyGeneratorMapper">
+    <select id="select" resultType="com.dredh.model.KeyGenerator">
+        select * from key_generator where id = #{id}
+    </select>
+    <insert id="insert" parameterType="com.dredh.model.KeyGenerator">
+        insert into key_generator(id, `key`) values(#{id}, #{key})
+    </insert>
+    <update id="increase">
+        update key_generator set `key` = `key` + #{number} where id = #{id}
+    </update>
+</mapper>

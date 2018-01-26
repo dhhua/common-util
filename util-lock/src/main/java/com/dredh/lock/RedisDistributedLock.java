@@ -6,7 +6,6 @@ import redis.clients.jedis.Jedis;
 import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -68,7 +67,7 @@ public class RedisDistributedLock implements Lock {
 
     @Override
     public boolean tryLock(long time, TimeUnit unit) throws InterruptedException {
-        return sync.tryAcquire(1, time, unit);
+        return sync.tryAcquireNanos(1, unit.toNanos(time));
     }
 
     @Override
@@ -78,8 +77,7 @@ public class RedisDistributedLock implements Lock {
 
     @Override
     public Condition newCondition() {
-        //暂时不支持
-        throw new UnsupportedOperationException();
+        return sync.newCondition();
     }
 
     class Sync extends AbstractQueuedSynchronizer {
@@ -95,22 +93,14 @@ public class RedisDistributedLock implements Lock {
 
         @Override
         protected boolean tryAcquire(int acquires) throws AcquireLockTimeoutException {
-            return doAcquire(acquires, redisLockTimeout, TimeUnit.MILLISECONDS);
-        }
-
-        private final boolean doAcquire(int acquires, long time, TimeUnit unit) {
             final Thread current = Thread.currentThread();
             int c = getState();
             if (c == 0) {
                 if (!hasQueuedPredecessors() &&
                         compareAndSetState(0, 1)) {
                     setExclusiveOwnerThread(current);
-                    try {
-                        // 如果是线程被中断失败的话，返回false，如果超时失败的话，捕获异常
-                        return tryAcquireRedisLock(unit.toNanos(time));
-                    } catch (TimeoutException e) {
-                        throw new AcquireLockTimeoutException();
-                    }
+                    // 如果是线程被中断失败的话，返回false，如果超时失败的话，捕获异常
+                    return tryAcquireRedisLock(TimeUnit.MILLISECONDS.toNanos(redisLockTimeout));
                 }
                 //可重入
             } else if (current == getExclusiveOwnerThread()) {
@@ -123,6 +113,7 @@ public class RedisDistributedLock implements Lock {
             }
             return false;
         }
+
         /**
          * 不能挂起太久，因为没线程唤醒它,暂时让出时间片
          * @return
@@ -137,13 +128,12 @@ public class RedisDistributedLock implements Lock {
          * @param nanosTimeout
          * @return
          */
-        private final boolean tryAcquireRedisLock(long nanosTimeout) throws TimeoutException {
+        private final boolean tryAcquireRedisLock(long nanosTimeout) {
             if (nanosTimeout <= 0L) {
                 return false;
             }
             final long deadline = System.nanoTime() + nanosTimeout;
             int count = 0;
-
             boolean interrupted = false;
 
             Jedis jedis = null;
@@ -152,7 +142,7 @@ public class RedisDistributedLock implements Lock {
                 while (true) {
                     nanosTimeout = deadline - System.nanoTime();
                     if (nanosTimeout <= 0L) {
-                        throw new TimeoutException();
+                        throw new AcquireLockTimeoutException();
                     }
                     String value = String.format(valueFormat, Thread.currentThread().getId());
                     //避免系统宕机锁不释放，设置过期时间
@@ -170,31 +160,6 @@ public class RedisDistributedLock implements Lock {
                 redisHelper.returnResouce(jedis);
             }
 
-        }
-
-        /**
-         *
-         * 暂时不能精准timeout，存在一开始如果不是AQS队头元素，获取redisLock的时候无法传达准确的timeout参数，会使用default值
-         * @param acquires
-         * @param time
-         * @param unit
-         * @return
-         * @throws InterruptedException
-         */
-        public boolean tryAcquire(int acquires, long time, TimeUnit unit) throws InterruptedException {
-            if (Thread.interrupted()) {
-                throw new InterruptedException();
-            }
-            final long deadline = System.nanoTime() + unit.toNanos(time);
-            boolean success = doAcquire(acquires, time, unit);
-            if (success) {
-                return true;
-            }
-            long nanosTimeout = deadline - System.nanoTime();
-            if (nanosTimeout <= 0L) {
-                return false;
-            }
-            return tryAcquireNanos(1, nanosTimeout);
         }
 
         public void unlock() {
@@ -241,6 +206,10 @@ public class RedisDistributedLock implements Lock {
 
         final boolean isLocked() {
             return getState() != 0;
+        }
+
+        public Condition newCondition() {
+            return new ConditionObject();
         }
     }
 }
