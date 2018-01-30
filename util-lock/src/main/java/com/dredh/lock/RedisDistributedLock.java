@@ -21,7 +21,7 @@ public class RedisDistributedLock implements Lock {
     private static final String PX = "PX";
     private static final String OK = "OK";
     private static final int RETRY_TIMES = 3;
-    private static final long PARK_TIME = 50;
+    private static final long PARK_TIME = 200;
     private static final long SPIN_FOR_TIMEOUT_THRESHOLD = 1000L;
 
     private static final String UNLOCK_SCRIPT =
@@ -119,7 +119,7 @@ public class RedisDistributedLock implements Lock {
          * @return
          */
         final boolean parkAndCheckInterrupt() {
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(PARK_TIME));
+            LockSupport.parkNanos(TimeUnit.NANOSECONDS.toNanos(PARK_TIME));
             return Thread.interrupted();
         }
 
@@ -155,6 +155,7 @@ public class RedisDistributedLock implements Lock {
                     if (count > RETRY_TIMES && nanosTimeout > SPIN_FOR_TIMEOUT_THRESHOLD && parkAndCheckInterrupt()) {
                         interrupted = true;
                     }
+                    count++;
                 }
             } finally {
                 redisHelper.returnResouce(jedis);
