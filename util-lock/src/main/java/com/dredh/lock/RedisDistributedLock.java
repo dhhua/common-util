@@ -164,17 +164,6 @@ public class RedisDistributedLock implements Lock {
         }
 
         public void unlock() {
-            Jedis jedis = null;
-            try {
-                if (isLocked()) {
-                    jedis = redisHelper.getJedisInstance();
-                    String value = String.format(valueFormat, Thread.currentThread().getId());
-                    jedis.eval(UNLOCK_SCRIPT, Arrays.asList(lockKey), Arrays.asList(value));
-                }
-            } finally {
-                redisHelper.returnResouce(jedis);
-            }
-
             release(1);
         }
 
@@ -185,6 +174,14 @@ public class RedisDistributedLock implements Lock {
                 throw new IllegalMonitorStateException();
             boolean free = false;
             if (c == 0) {
+                Jedis jedis = null;
+                try {
+                    jedis = redisHelper.getJedisInstance();
+                    String value = String.format(valueFormat, Thread.currentThread().getId());
+                    jedis.eval(UNLOCK_SCRIPT, Arrays.asList(lockKey), Arrays.asList(value));
+                } finally {
+                    redisHelper.returnResouce(jedis);
+                }
                 free = true;
                 setExclusiveOwnerThread(null);
             }
