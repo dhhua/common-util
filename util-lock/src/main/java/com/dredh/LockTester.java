@@ -54,7 +54,7 @@ public class LockTester {
 
     private class Task implements Runnable {
 
-        private static final int MAX_KEY = 20000;
+        private static final int MAX_KEY = 10000;
         @Override
         public void run() {
             SqlSession session = MybatisHelper.instance.openSession(true);

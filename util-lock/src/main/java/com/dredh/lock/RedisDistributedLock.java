@@ -21,7 +21,7 @@ public class RedisDistributedLock implements Lock {
     private static final String PX = "PX";
     private static final String OK = "OK";
     private static final int RETRY_TIMES = 3;
-    private static final long PARK_TIME = 50;
+    private static final long PARK_TIME = 200;
     private static final long SPIN_FOR_TIMEOUT_THRESHOLD = 1000L;
 
     private static final String UNLOCK_SCRIPT =
@@ -119,7 +119,7 @@ public class RedisDistributedLock implements Lock {
          * @return
          */
         final boolean parkAndCheckInterrupt() {
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(PARK_TIME));
+            LockSupport.parkNanos(TimeUnit.NANOSECONDS.toNanos(PARK_TIME));
             return Thread.interrupted();
         }
 
@@ -155,6 +155,7 @@ public class RedisDistributedLock implements Lock {
                     if (count > RETRY_TIMES && nanosTimeout > SPIN_FOR_TIMEOUT_THRESHOLD && parkAndCheckInterrupt()) {
                         interrupted = true;
                     }
+                    count++;
                 }
             } finally {
                 redisHelper.returnResouce(jedis);
@@ -163,17 +164,6 @@ public class RedisDistributedLock implements Lock {
         }
 
         public void unlock() {
-            Jedis jedis = null;
-            try {
-                if (isLocked()) {
-                    jedis = redisHelper.getJedisInstance();
-                    String value = String.format(valueFormat, Thread.currentThread().getId());
-                    jedis.eval(UNLOCK_SCRIPT, Arrays.asList(lockKey), Arrays.asList(value));
-                }
-            } finally {
-                redisHelper.returnResouce(jedis);
-            }
-
             release(1);
         }
 
@@ -184,6 +174,14 @@ public class RedisDistributedLock implements Lock {
                 throw new IllegalMonitorStateException();
             boolean free = false;
             if (c == 0) {
+                Jedis jedis = null;
+                try {
+                    jedis = redisHelper.getJedisInstance();
+                    String value = String.format(valueFormat, Thread.currentThread().getId());
+                    jedis.eval(UNLOCK_SCRIPT, Arrays.asList(lockKey), Arrays.asList(value));
+                } finally {
+                    redisHelper.returnResouce(jedis);
+                }
                 free = true;
                 setExclusiveOwnerThread(null);
             }
