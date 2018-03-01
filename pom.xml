@@ -11,6 +11,7 @@
     <modules>
         <module>util-lock</module>
         <module>reactor-test</module>
+        <module>random-object</module>
     </modules>
 
 
